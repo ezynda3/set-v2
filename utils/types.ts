@@ -29,3 +29,15 @@ export interface StreamingFeeState {
   maxStreamingFeePercentage: BigNumber;
   lastStreamingFeeTimestamp: BigNumber;
 }
+
+export interface NAVIssuanceSettings {
+  managerIssuanceHook: Address;
+  managerRedemptionHook: Address;
+  reserveAssets: Address[];
+  feeRecipient: Address;
+  managerFees: BigNumber[];
+  maxManagerFee: BigNumber;
+  premiumPercentage: BigNumber;
+  maxPremiumPercentage: BigNumber;
+  minSetTokenSupply: BigNumber;
+}

@@ -13,7 +13,8 @@ import {
   SetValuer,
   StandardTokenMock,
   StreamingFeeModule,
-  Weth9
+  Weth9,
+  NavIssuanceModule
 } from "../contracts";
 import DeployHelper from "../deploys";
 import {
@@ -39,11 +40,13 @@ export class SystemFixture {
 
   public controller: Controller;
   public factory: SetTokenCreator;
-  public issuanceModule: BasicIssuanceModule;
-  public streamingFeeModule: StreamingFeeModule;
   public priceOracle: PriceOracle;
   public integrationRegistry: IntegrationRegistry;
   public setValuer: SetValuer;
+
+  public issuanceModule: BasicIssuanceModule;
+  public streamingFeeModule: StreamingFeeModule;
+  public navIssuanceModule: NavIssuanceModule;
 
   public weth: Weth9;
   public usdc: StandardTokenMock;
@@ -96,10 +99,11 @@ export class SystemFixture {
     this.integrationRegistry = await this._deployer.core.deployIntegrationRegistry(this.controller.address);
     this.setValuer = await this._deployer.core.deploySetValuer(this.controller.address);
     this.streamingFeeModule = await this._deployer.modules.deployStreamingFeeModule(this.controller.address);
+    this.navIssuanceModule = await this._deployer.modules.deployNavIssuanceModule(this.controller.address, this.weth.address);
 
     await this.controller.initialize(
       [this.factory.address], // Factories
-      [this.issuanceModule.address, this.streamingFeeModule.address], // Modules
+      [this.issuanceModule.address, this.streamingFeeModule.address, this.navIssuanceModule.address], // Modules
       [this.integrationRegistry.address, this.priceOracle.address, this.setValuer.address], // Resources
       [0, 1, 2]  // Resource IDs where IntegrationRegistry is 0, PriceOracle is 1, SetValuer is 2
     );
@@ -109,7 +113,7 @@ export class SystemFixture {
     this.weth = await this._deployer.external.deployWETH();
     this.usdc = await this._deployer.mocks.deployTokenMock(this._ownerAddress, ether(10000), 6);
     this.wbtc = await this._deployer.mocks.deployTokenMock(this._ownerAddress, ether(10000), 8);
-    this.dai = await this._deployer.mocks.deployTokenMock(this._ownerAddress, ether(10000), 18);
+    this.dai = await this._deployer.mocks.deployTokenMock(this._ownerAddress, ether(1000000), 18);
 
     this.component1Price = ether(230);
     this.component2Price = ether(1);
@@ -121,7 +125,7 @@ export class SystemFixture {
     this.BTC_USD_Oracle = await this._deployer.mocks.deployOracleMock(this.component3Price);
     this.DAI_USD_Oracle = await this._deployer.mocks.deployOracleMock(this.component4Price);
 
-    await this.weth.deposit({ value: ether(2000) });
+    await this.weth.deposit({ value: ether(5000) });
     await this.weth.approve(this.issuanceModule.address, ether(10000));
     await this.usdc.approve(this.issuanceModule.address, ether(10000));
     await this.wbtc.approve(this.issuanceModule.address, ether(10000));

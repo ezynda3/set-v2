@@ -29,6 +29,9 @@ import { SignedSafeMath } from "@openzeppelin/contracts/math/SignedSafeMath.sol"
  *
  * Arithmetic for fixed-point numbers with 18 decimals of precision. Some functions taken from
  * dYdX's BaseMath library.
+ *
+ * CHANGELOG:
+ * - 9/21/20: Added safePower function
  */
 library PreciseUnitMath {
     using SafeMath for uint256;
@@ -159,5 +162,29 @@ library PreciseUnitMath {
      */
     function conservativePreciseDiv(int256 a, int256 b) internal pure returns (int256) {
         return divDown(a.mul(PRECISE_UNIT_INT), b);
+    }
+
+    /**
+    * @dev Performs the power on a specified value, reverts on overflow.
+    */
+    function safePower(
+        uint256 a,
+        uint256 pow
+    )
+        internal
+        pure
+        returns (uint256)
+    {
+        require(a > 0, "Value must be positive");
+
+        uint256 result = 1;
+        for (uint256 i = 0; i < pow; i++){
+            uint256 previousResult = result;
+
+            // Using safemath multiplication prevents overflows
+            result = previousResult.mul(a);
+        }
+
+        return result;
     }
 }
