@@ -27,11 +27,15 @@ import { SignedSafeMath } from "@openzeppelin/contracts/math/SignedSafeMath.sol"
 import { ISetToken } from "../../interfaces/ISetToken.sol";
 import { PreciseUnitMath } from "../../lib/PreciseUnitMath.sol";
 
+
 /**
  * @title Position
  * @author Set Protocol
  *
  * Collection of helper functions for handling and updating SetToken Positions
+ *
+ * CHANGELOG:
+ *  - Updated editExternalPosition to work when no external position is associated with module
  */
 library Position {
     using SafeCast for uint256;
@@ -109,10 +113,10 @@ library Position {
      * Update an external position and remove and external positions or components if necessary. The logic flows as follows:
      * 1) If component is not already added then add component and external position. 
      * 2) If component is added but no existing external position using the passed module exists then add the external position.
-     * 3) If the existing position is being added to then just update the unit
+     * 3) If the existing position is being added to then just update the unit and data
      * 4) If the position is being closed and no other external positions or default positions are associated with the component
      *    then untrack the component and remove external position.
-     * 5) If the position is being closed and  other existing positions still exist for the component then just remove the
+     * 5) If the position is being closed and other existing positions still exist for the component then just remove the
      *    external position.
      *
      * @param _setToken         SetToken being updated
@@ -130,43 +134,27 @@ library Position {
     )
         internal
     {
-        if (!_setToken.isComponent(_component)) {
-            _setToken.addComponent(_component);
-            addExternalPosition(_setToken, _component, _module, _newUnit, _data);
-        } else if (!_setToken.isExternalPositionModule(_component, _module)) {
-            addExternalPosition(_setToken, _component, _module, _newUnit, _data);
-        } else if (_newUnit != 0) {
-            _setToken.editExternalPositionUnit(_component, _module, _newUnit);
-        } else {
-            // If no default or external position remaining then remove component from components array
-            if (_setToken.getDefaultPositionRealUnit(_component) == 0 && _setToken.getExternalPositionModules(_component).length == 1) {
-                _setToken.removeComponent(_component);
+        if (_newUnit != 0) {
+            if (!_setToken.isComponent(_component)) {
+                _setToken.addComponent(_component);
+                _setToken.addExternalPositionModule(_component, _module);
+            } else if (!_setToken.isExternalPositionModule(_component, _module)) {
+                _setToken.addExternalPositionModule(_component, _module);
             }
-            _setToken.removeExternalPositionModule(_component, _module);
+            _setToken.editExternalPositionUnit(_component, _module, _newUnit);
+            _setToken.editExternalPositionData(_component, _module, _data);
+        } else {
+            require(_data.length == 0, "Passed data must be null");
+            // If no default or external position remaining then remove component from components array
+            if (_setToken.getExternalPositionRealUnit(_component, _module) != 0) {
+                address[] memory positionModules = _setToken.getExternalPositionModules(_component);
+                if (_setToken.getDefaultPositionRealUnit(_component) == 0 && positionModules.length == 1) {
+                    require(positionModules[0] == _module, "External positions must be 0 to remove component");
+                    _setToken.removeComponent(_component);
+                }
+                _setToken.removeExternalPositionModule(_component, _module);
+            }
         }
-    }
-
-    /**
-     * Add a new external position from a previously untracked module.
-     *
-     * @param _setToken         SetToken being updated
-     * @param _component        Component position being updated
-     * @param _module           Module external position is associated with
-     * @param _newUnit          Position units of new external position
-     * @param _data             Arbitrary data associated with the position
-     */
-    function addExternalPosition(
-        ISetToken _setToken,
-        address _component,
-        address _module,
-        int256 _newUnit,
-        bytes memory _data
-    )
-        internal
-    {
-        _setToken.addExternalPositionModule(_component, _module);
-        _setToken.editExternalPositionUnit(_component, _module, _newUnit);
-        _setToken.editExternalPositionData(_component, _module, _data);
     }
 
     /**
@@ -260,13 +248,7 @@ library Position {
         returns (uint256)
     {
         // If pre action total notional amount is greater then subtract post action total notional and calculate new position units
-        if (_preTotalNotional >= _postTotalNotional) {
-            uint256 unitsToSub = _preTotalNotional.sub(_postTotalNotional).preciseDivCeil(_setTokenSupply);
-            return _prePositionUnit.sub(unitsToSub);
-        } else {
-            // Else subtract post action total notional from pre action total notional and calculate new position units
-            uint256 unitsToAdd = _postTotalNotional.sub(_preTotalNotional).preciseDiv(_setTokenSupply);
-            return _prePositionUnit.add(unitsToAdd);
-        }
+        uint256 airdroppedAmount = _preTotalNotional.sub(_prePositionUnit.preciseMul(_setTokenSupply));
+        return _postTotalNotional.sub(airdroppedAmount).preciseDiv(_setTokenSupply);
     }
 }

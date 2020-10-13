@@ -42,12 +42,13 @@ import { ResourceIdentifier } from "./lib/ResourceIdentifier.sol";
  */
 contract SetValuer {
     using PreciseUnitMath for int256;
+    using PreciseUnitMath for uint256;
     using Position for ISetToken;
     using ResourceIdentifier for IController;
     using SafeCast for int256;
     using SafeCast for uint256;
     using SignedSafeMath for int256;
-
+    
     /* ============ State Variables ============ */
 
     // Instance of the Controller contract
@@ -92,7 +93,7 @@ contract SetValuer {
 
             int256 aggregateUnits = _setToken.getTotalComponentRealUnits(component);
 
-            // Normalize each position unit to preciseUnits 10e18 and cast to signed int
+            // Normalize each position unit to preciseUnits 1e18 and cast to signed int
             uint256 unitDecimals = ERC20(component).decimals();
             uint256 baseUnits = 10 ** unitDecimals;
             int256 normalizedUnits = aggregateUnits.preciseDiv(baseUnits.toInt256());
@@ -105,8 +106,6 @@ contract SetValuer {
             uint256 quoteToMaster = priceOracle.getPrice(_quoteAsset, masterQuoteAsset);
             valuation = valuation.preciseDiv(quoteToMaster.toInt256());
         }
-
-        require(valuation >= 0, "Must be greater than 0");
 
         return valuation.toUint256();
     }

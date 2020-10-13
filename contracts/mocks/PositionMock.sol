@@ -72,18 +72,6 @@ contract PositionMock {
         Position.editExternalPosition(_setToken, _component, _module, _newUnit, _data);
     }
 
-    function testAddExternalPosition(
-        ISetToken _setToken,
-        address _component,
-        address _module,
-        int256 _newUnit,
-        bytes memory _data
-    )
-        external
-    {
-        Position.addExternalPosition(_setToken, _component, _module, _newUnit, _data);
-    }
-
     function testGetDefaultTotalNotional(
         uint256 _setTokenSupply,
         uint256 _positionUnit

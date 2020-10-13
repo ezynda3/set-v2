@@ -398,4 +398,66 @@ describe("PreciseUnitMath", () => {
       });
     });
   });
+
+  describe("#safePower", async () => {
+    let subjectBase: BigNumber;
+    let subjectPower: BigNumber;
+
+    beforeEach(async () => {
+      subjectBase = new BigNumber(10);
+      subjectPower = new BigNumber(5);
+    });
+
+    async function subject(): Promise<BigNumber> {
+      return mathMock.safePower(
+        subjectBase,
+        subjectPower,
+      );
+    }
+
+    it("returns the correct value", async () => {
+      const result = await subject();
+
+      const expectedResult =
+        new BigNumber(subjectBase).pow(subjectPower.toNumber());
+      expect(result).to.eq(expectedResult);
+    });
+
+    describe("when the the base is 1", async () => {
+      beforeEach(async () => {
+        subjectBase = new BigNumber(1);
+        subjectPower = new BigNumber(5);
+      });
+
+      it("returns the correct value", async () => {
+        const result = await subject();
+
+        const expectedResult =
+          new BigNumber(subjectBase).pow(subjectPower.toNumber());
+        expect(result).to.eq(expectedResult);
+      });
+    });
+
+    describe("when the values overflow", async () => {
+      beforeEach(async () => {
+        subjectBase = new BigNumber(10000);
+        subjectPower = new BigNumber(100);
+      });
+
+      it("should revert", async () => {
+        await expect(subject()).to.be.revertedWith("SafeMath: multiplication overflow");
+      });
+    });
+
+    describe("when the the base is 0", async () => {
+      beforeEach(async () => {
+        subjectBase = new BigNumber(0);
+        subjectPower = new BigNumber(5);
+      });
+
+      it("should revert", async () => {
+        await expect(subject()).to.be.revertedWith("Value must be positive");
+      });
+    });
+  });
 });

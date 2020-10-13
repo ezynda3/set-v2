@@ -2,7 +2,7 @@
 import { ethers } from "@nomiclabs/buidler";
 import { Address } from "./types";
 
-import { SystemFixture } from "./fixtures";
+import { AaveFixture, SystemFixture, UniswapFixture } from "./fixtures";
 import { Blockchain, ProtocolUtils } from "./common";
 
 // Buidler-Provider Aware Exports
@@ -10,23 +10,40 @@ const provider = ethers.provider;
 export const getSystemFixture = (ownerAddress: Address) => new SystemFixture(provider, ownerAddress);
 export const getProtocolUtils = () => new ProtocolUtils(provider);
 export const getBlockchainUtils = () => new Blockchain(provider);
+export const getAaveFixture = (ownerAddress: Address) => new AaveFixture(provider, ownerAddress);
+export const getUniswapFixture = (ownerAddress: Address) => new UniswapFixture(provider, ownerAddress);
 
 export {
+  addressToData,
+  bigNumberToData,
   bitcoin,
+  calculateEngageQuantities,
+  calculateLPTokensIssued,
+  calculateRebalanceFlows,
+  calculateRebalanceQuantity,
+  calculateTokensInReserve,
   divDown,
   ether,
+  getExpectedIssuePositionMultiplier,
+  getExpectedIssuePositionUnit,
+  getExpectedPostFeeQuantity,
   getPostFeePositionUnits,
+  getExpectedSetTokenIssueQuantity,
+  getExpectedReserveRedeemQuantity,
+  getExpectedRedeemPositionMultiplier,
+  getExpectedRedeemPositionUnit,
+  getReservesSafe,
   getStreamingFee,
   getStreamingFeeInflationAmount,
   gWei,
   hashAdapterName,
+  min,
   preciseDiv,
   preciseDivCeil,
   preciseMul,
   preciseMulCeil,
   preciseMulCeilInt,
   preciseDivCeilInt,
-  reconcileBalances,
   usdc,
 } from "./common";
 export {

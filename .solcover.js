@@ -3,7 +3,9 @@ const shell = require('shelljs'); // This module is already a solidity-coverage 
 module.exports = {
   skipFiles: [
     'mocks',
-    'interfaces'
+    'interfaces',
+    'protocol/modules/UniswapYieldStrategy.sol',
+    'product/AssetLimitHook.sol'
   ],
   providerOptions: {
     default_balance_ether: 100000,

@@ -15,13 +15,13 @@ import {
 } from "@utils/index";
 
 import { Account, Address } from "@utils/types";
-import { ZERO, PRECISE_UNIT, ADDRESS_ZERO } from "@utils/constants";
+import { ZERO, PRECISE_UNIT, ADDRESS_ZERO, ONE } from "@utils/constants";
 import { SystemFixture } from "@utils/fixtures";
 
 const expect = getWaffleExpect();
 
 describe("Position", () => {
-  let owner: Account, moduleOne: Account;
+  let owner: Account, moduleOne: Account, moduleTwo: Account;
   let setToken: SetToken;
   let deployer: DeployHelper;
   let setup: SystemFixture;
@@ -40,6 +40,7 @@ describe("Position", () => {
     [
       owner,
       moduleOne,
+      moduleTwo,
     ] = await getAccounts();
 
     deployer = new DeployHelper(owner.wallet);
@@ -376,7 +377,7 @@ describe("Position", () => {
       subjectSetTokenAddress = setToken.address;
       subjectComponent = componentTwo.address;
       subjectSetTokenSupply = ether(3);
-      subjectPreviousComponentBalance = ZERO;
+      subjectPreviousComponentBalance = preciseMul(subjectSetTokenSupply, ether(2));
 
       // Mint some set tokens
       await setup.approveAndIssueSetToken(setToken, subjectSetTokenSupply);
@@ -459,6 +460,37 @@ describe("Position", () => {
         expect(unit).to.eq(subjectNewUnit);
         expect(data).to.eq("0x0123");
       });
+
+      describe("and calling module is calling with 0 unit", async () => {
+        beforeEach(async () => {
+          subjectNewUnit = ZERO;
+          subjectData = "0x";
+        });
+
+        it("should not add the component to the components array", async () => {
+          const preComponents = await setToken.getComponents();
+          expect(preComponents).to.not.contain(subjectComponent);
+
+          await subject();
+
+          const postComponents = await setToken.getComponents();
+          expect(postComponents).to.not.contain(subjectComponent);
+        });
+
+        it("should not add the new external position", async () => {
+          const preModules = await setToken.getExternalPositionModules(subjectComponent);
+          expect(preModules.length).to.eq(0);
+
+          await subject();
+
+          const postModules = await setToken.getExternalPositionModules(subjectComponent);
+          const unit = await setToken.getExternalPositionRealUnit(subjectComponent, subjectModule);
+          const data = await setToken.getExternalPositionData(subjectComponent, subjectModule);
+          expect(postModules).to.not.contain(subjectModule);
+          expect(unit).to.eq(ZERO);
+          expect(data).to.eq("0x");
+        });
+      });
     });
 
     context("only a default position exists for the component", async () => {
@@ -493,11 +525,35 @@ describe("Position", () => {
       });
     });
 
+    context("when adding to an existing external position", async () => {
+      beforeEach(async () => {
+        await subject();
+
+        subjectNewUnit = ether(2);
+        subjectData = "0x4567";
+      });
+
+      it("should add the new external position", async () => {
+        const preModules = await setToken.getExternalPositionModules(subjectComponent);
+        expect(preModules.length).to.eq(1);
+
+        await subject();
+
+        const modules = await setToken.getExternalPositionModules(subjectComponent);
+        const unit = await setToken.getExternalPositionRealUnit(subjectComponent, subjectModule);
+        const data = await setToken.getExternalPositionData(subjectComponent, subjectModule);
+        expect(modules).to.contain(subjectModule);
+        expect(unit).to.eq(subjectNewUnit);
+        expect(data).to.eq("0x4567");
+      });
+    });
+
     context("when removing an external position but default position still exists", async () => {
       beforeEach(async () => {
         subjectComponent = componentTwo.address;
         await subject();
         subjectNewUnit = ZERO;
+        subjectData = "0x";
       });
 
       it("should remove the module from the modules array, components stay the same", async () => {
@@ -524,12 +580,23 @@ describe("Position", () => {
         expect(postUnit).to.eq(ZERO);
         expect(data).to.eq("0x");
       });
+
+      describe("but passed data is not 0", async () => {
+        beforeEach(async () => {
+          subjectData = "0x4567";
+        });
+
+        it("should revert", async () => {
+          await expect(subject()).to.be.revertedWith("Passed data must be null");
+        });
+      });
     });
 
     context("when removing an external position and no default position", async () => {
       beforeEach(async () => {
         await subject();
         subjectNewUnit = ZERO;
+        subjectData = "0x";
       });
 
       it("should remove entry from the modules and components array", async () => {
@@ -556,46 +623,17 @@ describe("Position", () => {
         expect(postUnit).to.eq(ZERO);
         expect(data).to.eq("0x");
       });
-    });
-  });
 
-  describe("#addExternalPosition", async () => {
-    let subjectSetToken: Address;
-    let subjectComponent: Address;
-    let subjectModule: Address;
-    let subjectNewUnit: BigNumber;
-    let subjectData: string;
+      describe("but passed module is not the one being tracked", async () => {
+        beforeEach(async () => {
+          await setToken.connect(moduleOne.wallet).editExternalPositionUnit(subjectComponent, moduleTwo.address, ONE);
+          subjectModule = moduleTwo.address;
+        });
 
-    beforeEach(async () => {
-      subjectSetToken = setToken.address;
-      subjectComponent = componentTwo.address;
-      subjectModule = moduleOne.address;
-      subjectNewUnit = ether(3);
-      subjectData = "0x123";
-    });
-
-    async function subject(): Promise<any> {
-      return positionLibMock.testAddExternalPosition(
-        subjectSetToken,
-        subjectComponent,
-        subjectModule,
-        subjectNewUnit,
-        subjectData
-      );
-    }
-
-    it("should add the new external position", async () => {
-      const preModules = await setToken.getExternalPositionModules(subjectComponent);
-      expect(preModules.length).to.eq(0);
-
-      await subject();
-
-      const modules = await setToken.getExternalPositionModules(subjectComponent);
-      const unit = await setToken.getExternalPositionRealUnit(subjectComponent, subjectModule);
-      const data = await setToken.getExternalPositionData(subjectComponent, subjectModule);
-      expect(modules).to.contain(subjectModule);
-      expect(unit).to.eq(subjectNewUnit);
-      expect(data).to.eq("0x0123");
+        it("should revert", async () => {
+          await expect(subject()).to.be.revertedWith("External positions must be 0 to remove component");
+        });
+      });
     });
   });
 
@@ -685,6 +723,7 @@ describe("Position", () => {
     describe("when post action notional is greater than pre action notional", async () => {
       beforeEach(async () => {
         subjectPreTotalNotional = ether(1);
+        subjectPrePositionUnit = ether(.5);
         subjectPostTotalNotional = ether(2);
       });
 
@@ -693,6 +732,21 @@ describe("Position", () => {
 
         const unitToAdd = preciseDiv(subjectPostTotalNotional.sub(subjectPreTotalNotional), subjectSetTokenSupply);
         const expectedPositionUnit = subjectPrePositionUnit.add(unitToAdd);
+        expect(newPositionUnit).to.eq(expectedPositionUnit);
+      });
+    });
+
+    describe("when resulting position unit requires rounding, it rounds down", async () => {
+      beforeEach(async () => {
+        subjectPrePositionUnit = ether(.99999999999999999);
+      });
+
+      it("should calculate correct new position unit", async () => {
+        const newPositionUnit = await subject();
+
+        const unitToAdd = preciseDiv(subjectPostTotalNotional.sub(subjectPreTotalNotional), subjectSetTokenSupply);
+        const expectedPositionUnit = subjectPrePositionUnit.add(unitToAdd);
+
         expect(newPositionUnit).to.eq(expectedPositionUnit);
       });
     });

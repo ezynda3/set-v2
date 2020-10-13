@@ -12,7 +12,7 @@ export const gWei = (amount: number): BigNumber => {
 };
 
 export const bitcoin = (amount: number): BigNumber => {
-  const weiString = new BigNumber("100000000").mul(amount);
+  const weiString = 100000000 * amount; // Handles decimal Bitcoins better
   return new BigNumber(weiString);
 };
 

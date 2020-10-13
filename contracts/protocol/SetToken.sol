@@ -516,13 +516,13 @@ contract SetToken is ERC20 {
     function getTotalComponentRealUnits(address _component) external view returns(int256) {
         int256 totalUnits = getDefaultPositionRealUnit(_component);
 
-		address[] memory externalModules = _externalPositionModules(_component);
-		for (uint256 i = 0; i < externalModules.length; i++) {
+        address[] memory externalModules = _externalPositionModules(_component);
+        for (uint256 i = 0; i < externalModules.length; i++) {
             // We will perform the summation no matter what, as an external position virtual unit can be negative
-			totalUnits = totalUnits.add(getExternalPositionRealUnit(_component, externalModules[i]));
-		}
+            totalUnits = totalUnits.add(getExternalPositionRealUnit(_component, externalModules[i]));
+        }
 
-		return totalUnits;
+        return totalUnits;
     }
 
 
@@ -531,19 +531,19 @@ contract SetToken is ERC20 {
     /* ============ Internal Functions ============ */
 
     function _defaultPositionVirtualUnit(address _component) internal view returns(int256) {
-    	return componentPositions[_component].virtualUnit;
+        return componentPositions[_component].virtualUnit;
     }
 
     function _externalPositionModules(address _component) internal view returns(address[] memory) {
-    	return componentPositions[_component].externalPositionModules;
+        return componentPositions[_component].externalPositionModules;
     }
 
     function _externalPositionVirtualUnit(address _component, address _module) internal view returns(int256) {
-    	return componentPositions[_component].externalPositions[_module].virtualUnit;
+        return componentPositions[_component].externalPositions[_module].virtualUnit;
     }
 
     function _externalPositionData(address _component, address _module) internal view returns(bytes memory) {
-    	return componentPositions[_component].externalPositions[_module].data;
+        return componentPositions[_component].externalPositions[_module].data;
     }
 
     /**
@@ -585,7 +585,7 @@ contract SetToken is ERC20 {
             // Increment the position count by each external position module
             address[] memory externalModules = _externalPositionModules(component);
             if (externalModules.length > 0) {
-            	positionCount = positionCount.add(externalModules.length);	
+                positionCount = positionCount.add(externalModules.length);  
             }
         }
 

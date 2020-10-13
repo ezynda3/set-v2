@@ -77,4 +77,8 @@ contract PreciseUnitMathMock {
     function conservativePreciseDiv(int256 a, int256 b) external pure returns(int256) {
         return a.conservativePreciseDiv(b);
     }
+
+    function safePower(uint256 a, uint256 b) external pure returns(uint256) {
+        return a.safePower(b);
+    }
 }
