@@ -57,17 +57,19 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
     /* ============ Events ============ */
 
     event ComponentWrapped(
-        address indexed _setToken,
-        address _underlyingToken,
-        address _wrappedToken,
+        ISetToken indexed _setToken,
+        address indexed _underlyingToken,
+        address indexed _wrappedToken,
         uint256 _underlyingQuantity,
+        uint256 _wrappedQuantity,
         string _integrationName
     );
 
     event ComponentUnwrapped(
-        address indexed _setToken,
-        address _underlyingToken,
-        address _wrappedToken,
+        ISetToken indexed _setToken,
+        address indexed _underlyingToken,
+        address indexed _wrappedToken,
+        uint256 _underlyingQuantity,
         uint256 _wrappedQuantity,
         string _integrationName
     );
@@ -109,7 +111,10 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         nonReentrant
         onlyManagerAndValidSet(_setToken)
     {
-        uint256 notionalUnderlyingWrapped = _validateWrapAndUpdate(
+        (
+            uint256 notionalUnderlyingWrapped,
+            uint256 notionalWrapped
+        ) = _validateWrapAndUpdate(
             _integrationName,
             _setToken,
             _underlyingToken,
@@ -119,10 +124,11 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         );
 
         emit ComponentWrapped(
-            address(_setToken),
+            _setToken,
             _underlyingToken,
             _wrappedToken,
             notionalUnderlyingWrapped,
+            notionalWrapped,
             _integrationName
         );
     }
@@ -147,7 +153,10 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         nonReentrant
         onlyManagerAndValidSet(_setToken)
     {
-        uint256 notionalUnderlyingWrapped = _validateWrapAndUpdate(
+        (
+            uint256 notionalUnderlyingWrapped,
+            uint256 notionalWrapped
+        ) = _validateWrapAndUpdate(
             _integrationName,
             _setToken,
             address(weth),
@@ -157,10 +166,11 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         );
 
         emit ComponentWrapped(
-            address(_setToken),
+            _setToken,
             address(weth),
             _wrappedToken,
             notionalUnderlyingWrapped,
+            notionalWrapped,
             _integrationName
         );
     }
@@ -185,7 +195,10 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         nonReentrant
         onlyManagerAndValidSet(_setToken)
     {
-        uint256 notionalUnderlyingUnwrapped = _validateUnwrapAndUpdate(
+        (
+            uint256 notionalUnderlyingUnwrapped,
+            uint256 notionalUnwrapped
+        ) = _validateUnwrapAndUpdate(
             _integrationName,
             _setToken,
             _underlyingToken,
@@ -195,10 +208,11 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         );
 
         emit ComponentUnwrapped(
-            address(_setToken),
+            _setToken,
             _underlyingToken,
             _wrappedToken,
             notionalUnderlyingUnwrapped,
+            notionalUnwrapped,
             _integrationName
         );
     }
@@ -222,7 +236,10 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         nonReentrant
         onlyManagerAndValidSet(_setToken)
     {
-        uint256 notionalUnderlyingUnwrapped = _validateUnwrapAndUpdate(
+        (
+            uint256 notionalUnderlyingUnwrapped,
+            uint256 notionalUnwrapped
+        ) = _validateUnwrapAndUpdate(
             _integrationName,
             _setToken,
             address(weth),
@@ -232,10 +249,11 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         );
 
         emit ComponentUnwrapped(
-            address(_setToken),
+            _setToken,
             address(weth),
             _wrappedToken,
             notionalUnderlyingUnwrapped,
+            notionalUnwrapped,
             _integrationName
         );
     }
@@ -276,13 +294,12 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         internal
         view
     {
+        require(_transactPositionUnits > 0, "Target position units must be > 0");
         require(_setToken.hasDefaultPosition(_transactPosition), "Target default position must be component");
         require(
             _setToken.hasSufficientDefaultUnits(_transactPosition, _transactPositionUnits),
             "Unit cant be greater than existing"
         );
-
-        require(_transactPositionUnits > 0, "Target position units must be >0");
     }
 
     /**
@@ -291,7 +308,7 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
      * is being used (_usesEther = true) WETH position must first be unwrapped and underlyingAddress sent to 
      * adapter must be external protocol's ETH representative address.
      *
-     * Returns notional amount of underlying tokens wrapped.
+     * Returns notional amount of underlying tokens and wrapped tokens that were wrapped.
      */
     function _validateWrapAndUpdate(
         string calldata _integrationName,
@@ -302,7 +319,7 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         bool _usesEther
     ) 
         internal
-        returns (uint256)
+        returns (uint256, uint256)
     {
         _validateInputs(_setToken, _underlyingToken, _underlyingUnits);
 
@@ -342,7 +359,10 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         _updatePosition(_setToken, _underlyingToken, preActionUnderlyingNotional, postActionUnderlyingNotional);
         _updatePosition(_setToken, _wrappedToken, preActionWrapNotional, postActionWrapNotional);
 
-        return preActionUnderlyingNotional.sub(postActionUnderlyingNotional);
+        return (
+            preActionUnderlyingNotional.sub(postActionUnderlyingNotional),
+            postActionWrapNotional.sub(preActionWrapNotional)
+        );
     }
 
     /**
@@ -351,7 +371,7 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
      * sent to adapter must be set to external protocol's ETH representative address and ETH returned from
      * external protocol is wrapped.
      *
-     * Returns notional amount of underlying tokens unwrapped.
+     * Returns notional amount of underlying tokens and wrapped tokens unwrapped.
      */
     function _validateUnwrapAndUpdate(
         string calldata _integrationName,
@@ -362,7 +382,7 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         bool _usesEther
     )
         internal
-        returns (uint256)
+        returns (uint256, uint256)
     {
         _validateInputs(_setToken, _wrappedToken, _wrappedTokenUnits);
 
@@ -395,7 +415,10 @@ contract WrapModule is ModuleBase, ReentrancyGuard {
         _updatePosition(_setToken, _underlyingToken, preActionUnderlyingNotional, postActionUnderlyingNotional);
         _updatePosition(_setToken, _wrappedToken, preActionWrapNotional, postActionWrapNotional);
 
-        return postActionUnderlyingNotional.sub(preActionUnderlyingNotional);
+        return (
+            postActionUnderlyingNotional.sub(preActionUnderlyingNotional),
+            preActionWrapNotional.sub(postActionWrapNotional)
+        );
     }
 
     /**
