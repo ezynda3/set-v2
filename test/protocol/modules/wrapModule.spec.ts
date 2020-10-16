@@ -257,6 +257,7 @@ describe("WrapModule", () => {
           subjectUnderlyingToken,
           subjectWrappedToken,
           preciseMul(subjectUnderlyingUnits, setTokensIssued),
+          setTokensIssued,
           subjectIntegrationName
         );
       });
@@ -323,7 +324,7 @@ describe("WrapModule", () => {
         });
 
         it("should revert", async () => {
-          await expect(subject()).to.be.revertedWith("Target position units must be >0");
+          await expect(subject()).to.be.revertedWith("Target position units must be > 0");
         });
       });
     });
@@ -395,6 +396,7 @@ describe("WrapModule", () => {
           setup.weth.address,
           subjectWrappedToken,
           preciseMul(subjectUnderlyingUnits, setTokensIssued),
+          setTokensIssued,
           subjectIntegrationName
         );
       });
@@ -471,7 +473,7 @@ describe("WrapModule", () => {
         });
 
         it("should revert", async () => {
-          await expect(subject()).to.be.revertedWith("Target position units must be >0");
+          await expect(subject()).to.be.revertedWith("Target position units must be > 0");
         });
       });
     });
@@ -542,6 +544,7 @@ describe("WrapModule", () => {
           subjectUnderlyingToken,
           subjectWrappedToken,
           preciseMul(subjectWrappedTokenUnits, setTokensIssued),
+          preciseMul(setTokensIssued, wrappedQuantity.sub(subjectWrappedTokenUnits)),
           subjectIntegrationName
         );
       });
@@ -608,7 +611,7 @@ describe("WrapModule", () => {
         });
 
         it("should revert", async () => {
-          await expect(subject()).to.be.revertedWith("Target position units must be >0");
+          await expect(subject()).to.be.revertedWith("Target position units must be > 0");
         });
       });
     });
@@ -685,6 +688,7 @@ describe("WrapModule", () => {
           setup.weth.address,
           subjectWrappedToken,
           preciseMul(subjectWrappedTokenUnits, setTokensIssued),
+          preciseMul(setTokensIssued, wrappedQuantity.sub(subjectWrappedTokenUnits)),
           subjectIntegrationName
         );
       });
@@ -751,7 +755,7 @@ describe("WrapModule", () => {
         });
 
         it("should revert", async () => {
-          await expect(subject()).to.be.revertedWith("Target position units must be >0");
+          await expect(subject()).to.be.revertedWith("Target position units must be > 0");
         });
       });
     });
