@@ -33,6 +33,7 @@ import { IWETH } from "../../interfaces/external/IWETH.sol";
 import { ModuleBase } from "../lib/ModuleBase.sol";
 import { Position } from "../lib/Position.sol";
 import { PreciseUnitMath } from "../../lib/PreciseUnitMath.sol";
+import { Uint256ArrayUtils } from "../../lib/Uint256ArrayUtils.sol";
 
 
 /**
@@ -56,10 +57,11 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
     using Position for ISetToken;
     using Invoke for ISetToken;
     using AddressArrayUtils for address[];
+    using Uint256ArrayUtils for uint256[];
 
     /* ============ Structs ============ */
 
-    struct AssetTrade {
+    struct AssetTradeInfo {
         uint256 targetUnit;              // Target unit for the asset during current rebalance period
         uint256 maxSize;                 // Max trade size in precise units
         uint256 coolOffPeriod;           // Required time between trades for the asset
@@ -67,12 +69,23 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
         uint256 exchange;                // Integer representing ID of exchange to use
     }
 
+    /* ============ Enums ============ */
+
+    // Enum of exchange Ids
+    enum ExchangeId {
+        None,
+        Uniswap,
+        Sushiswap,
+        Balancer,
+        Last
+    }
+
     /* ============ Events ============ */
 
-    event TargetUnitsUpdated(IERC20 indexed _component, uint256 _newUnit, uint256 _positionMultiplier);
-    event TradeMaximumUpdated(IERC20 indexed _component, uint256 _newMaximum);
-    event AssetExchangeUpdated(IERC20 indexed _component, uint256 _newExchange);
-    event CoolOffPeriodUpdated(IERC20 indexed _component, uint256 _newCoolOffPeriod);
+    event TargetUnitsUpdated(address indexed _component, uint256 _newUnit, uint256 _positionMultiplier);
+    event TradeMaximumUpdated(address indexed _component, uint256 _newMaximum);
+    event AssetExchangeUpdated(address indexed _component, uint256 _newExchange);
+    event CoolOffPeriodUpdated(address indexed _component, uint256 _newCoolOffPeriod);
     event TraderStatusUpdated(address indexed _trader, bool _status);
     event AnyoneTradeUpdated(bool indexed _status);
     event TradeExecuted(
@@ -85,12 +98,8 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
 
     /* ============ Constants ============ */
 
-    uint256 private constant UNISWAP_ID = 0;        // ID reference to Uniswap router
-    uint256 private constant SUSHISWAP_ID = 1;      // ID reference to Sushiswap router
-    uint256 private constant BALANCER_ID = 2;       // ID reference to Balancer router
-
-    uint256 private constant TARGET_RAISE_LIMIT = 25 * 1e14;    // 25 bps in preciseUnits
-    uint256 private constant BALANCER_POOL_LIMIT = 3;           // Amount of pools examined when fetching quote
+    uint256 private constant TARGET_RAISE_DIVISOR = 1.0025e18;       // Raise targets 25 bps
+    uint256 private constant BALANCER_POOL_LIMIT = 3;                // Amount of pools examined when fetching quote
 
     string private constant UNISWAP_OUT = "swapTokensForExactTokens(uint256,uint256,address[],address,uint256)";
     string private constant UNISWAP_IN = "swapExactTokensForTokens(uint256,uint256,address[],address,uint256)";
@@ -99,8 +108,8 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
 
     /* ============ State Variables ============ */
 
-    mapping(IERC20 => AssetTrade) public assetInfo;         // Mapping of component to component restrictions
-    IERC20[] public rebalanceComponents;                    // Components having units updated during current rebalance
+    mapping(address => AssetTradeInfo) public assetInfo;    // Mapping of component to component restrictions
+    address[] public rebalanceComponents;                   // Components having units updated during current rebalance
     uint256 public positionMultiplier;                      // Position multiplier when current rebalance units were devised
     mapping(address => bool) public tradeAllowList;         // Mapping of addresses allowed to call trade()
     bool public anyoneTrade;                                // Toggles on or off skipping the tradeAllowList
@@ -114,6 +123,11 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
 
     modifier onlyAllowedTrader(address _caller) {
         require(_isAllowedTrader(_caller), "Address not permitted to trade");
+        _;
+    }
+
+    modifier onlyEOA() {
+        require(msg.sender == tx.origin, "Caller must be EOA Address");
         _;
     }
 
@@ -140,41 +154,44 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
      * adjust target units in case fees are accrued. Validate that weth is not a part of the new allocation and that all components
      * in current allocation are in _components array.
      *
-     * @param _components               Array of components in new allocation plus any components removed from old allocation
-     * @param _targetUnits              Array of target units at end of rebalance, maps to same index of component, if component
-     *                                      being removed set to 0.
-     * @param _positionMultiplier       Position multiplier when target units were calculated, needed in order to adjust target units
-     *                                      if fees accrued
+     * @param _newComponents                    Array of new components to add to allocation
+     * @param _newComponentsTargetUnits         Array of target units at end of rebalance for new components, maps to same index of component
+     * @param _oldComponentsTargetUnits         Array of target units at end of rebalance for old component, maps to same index of component,
+     *                                               if component being removed set to 0.
+     * @param _positionMultiplier               Position multiplier when target units were calculated, needed in order to adjust target units
+     *                                               if fees accrued
      */
     function startRebalance(
-        IERC20[] calldata _components,
-        uint256[] calldata _targetUnits,
+        address[] calldata _newComponents,
+        uint256[] calldata _newComponentsTargetUnits,
+        uint256[] calldata _oldComponentsTargetUnits,
         uint256 _positionMultiplier
     )
         external
         onlyManagerAndValidSet(index)
-    {
-        _validateArrays(_components, _targetUnits);
-        
-        address[] memory currentComponents = index.getComponents();
+    {   
+        // Don't use validate arrays because empty arrays are valid
+        require(_newComponents.length == _newComponentsTargetUnits.length, "Array length mismatch");
 
-        for (uint256 i = 0; i < _components.length; i++) {
-            IERC20 component = _components[i];
-            uint256 targetUnit = _targetUnits[i];
+        address[] memory currentComponents = index.getComponents();
+        require(currentComponents.length == _oldComponentsTargetUnits.length, "New allocation must have target for all old components");
+
+        address[] memory aggregateComponents = currentComponents.extend(_newComponents);
+        uint256[] memory aggregateTargetUnits = _oldComponentsTargetUnits.extend(_newComponentsTargetUnits);
+
+        require(!aggregateComponents.hasDuplicate(), "Cannot duplicate components");
+
+        for (uint256 i = 0; i < aggregateComponents.length; i++) {
+            address component = aggregateComponents[i];
+            uint256 targetUnit = aggregateTargetUnits[i];
 
             require(address(component) != address(weth), "WETH cannot be an index component");
             assetInfo[component].targetUnit = targetUnit;
 
-            if (currentComponents.contains(address(component))) {
-                currentComponents = currentComponents.remove(address(component));
-            }
-
             emit TargetUnitsUpdated(component, targetUnit, _positionMultiplier);
         }
 
-        require(currentComponents.length == 0, "New allocation must have target for all old components");
-
-        rebalanceComponents = _components;
+        rebalanceComponents = aggregateComponents;
         positionMultiplier = _positionMultiplier;
     }
 
@@ -184,8 +201,7 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
      *
      * @param _component            Component to trade
      */
-    function trade(IERC20 _component) external nonReentrant onlyAllowedTrader(msg.sender) virtual {
-        require(msg.sender == tx.origin, "Caller must be EOA Address");
+    function trade(address _component) external nonReentrant onlyAllowedTrader(msg.sender) onlyEOA() virtual {
 
         _validateTradeParameters(_component);
 
@@ -199,6 +215,8 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
         } else {
             _sellOverweight(_component, tradeAmount);
         }
+
+        assetInfo[_component].lastTradeTimestamp = block.timestamp;
     }
 
     /**
@@ -209,24 +227,23 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
      *
      * @param _component            Component to trade
      */
-    function tradeRemainingWETH(IERC20 _component) external nonReentrant onlyAllowedTrader(msg.sender) virtual {
-        require(msg.sender == tx.origin, "Caller must be EOA Address");
+    function tradeRemainingWETH(address _component) external nonReentrant onlyAllowedTrader(msg.sender) onlyEOA() virtual {
         require(_noTokensToSell(), "Must sell all sellable tokens before can be called");
 
         _validateTradeParameters(_component);
 
         (, uint256 tradeLimit) = _calculateTradeSizeAndDirection(_component);
 
-        uint256 preTradeComponentAmount = _component.balanceOf(address(index));
+        uint256 preTradeComponentAmount = IERC20(_component).balanceOf(address(index));
         uint256 preTradeWethAmount = weth.balanceOf(address(index));
 
-        _executeTrade(address(weth), address(_component), true, preTradeWethAmount, assetInfo[_component].exchange);
+        _executeTrade(address(weth), _component, true, preTradeWethAmount, assetInfo[_component].exchange);
 
         (,
             uint256 componentTradeSize
-        ) = _updatePositionState(address(weth), address(_component), preTradeWethAmount, preTradeComponentAmount);
+        ) = _updatePositionState(address(weth), _component, preTradeWethAmount, preTradeComponentAmount);
 
-        require(componentTradeSize < tradeLimit, "Component amount exceeds trade size limit");
+        require(componentTradeSize < tradeLimit, "Trade size exceeds trade size limit");
 
         assetInfo[_component].lastTradeTimestamp = block.timestamp;
     }
@@ -242,7 +259,7 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
             "Targets must be met and ETH remaining in order to raise target"
         );
 
-        positionMultiplier = positionMultiplier.preciseDiv(PreciseUnitMath.preciseUnit().add(TARGET_RAISE_LIMIT));
+        positionMultiplier = positionMultiplier.preciseDiv(TARGET_RAISE_DIVISOR);
     }
 
     /**
@@ -252,7 +269,7 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
      * @param _tradeMaximums         Array of trade maximums mapping to correct component
      */
     function setTradeMaximums(
-        IERC20[] calldata _components,
+        address[] calldata _components,
         uint256[] calldata _tradeMaximums
     )
         external
@@ -273,7 +290,7 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
      * @param _exchanges         Array of exchanges mapping to correct component, uint256 used to signify exchange
      */
     function setExchanges(
-        IERC20[] calldata _components,
+        address[] calldata _components,
         uint256[] calldata _exchanges
     )
         external
@@ -283,7 +300,7 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
 
         for (uint256 i = 0; i < _components.length; i++) {
             uint256 exchange = _exchanges[i];
-            require(exchange < 3, "Unrecognized exchange identifier");
+            require(exchange < uint256(ExchangeId.Last), "Unrecognized exchange identifier");
             assetInfo[_components[i]].exchange = _exchanges[i];
 
             emit AssetExchangeUpdated(_components[i], exchange);
@@ -297,7 +314,7 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
      * @param _coolOffPeriods       Array of cool off periods to correct component
      */
     function setCoolOffPeriods(
-        IERC20[] calldata _components,
+        address[] calldata _components,
         uint256[] calldata _coolOffPeriods
     )
         external
@@ -315,26 +332,33 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
      * MANAGER ONLY: Toggle ability for passed addresses to trade from current state 
      *
      * @param _traders           Array trader addresses to toggle status
+     * @param _statuses          Booleans indicating if matching trader can trade
      */
-    function updateTraderStatus(address[] calldata _traders) external onlyManagerAndValidSet(index) {
+    function updateTraderStatus(address[] calldata _traders, bool[] calldata _statuses) external onlyManagerAndValidSet(index) {
+        require(_traders.length == _statuses.length, "Array length mismatch");
         require(_traders.length > 0, "Array length must be > 0");
+        require(!_traders.hasDuplicate(), "Cannot duplicate traders");
+
         for (uint256 i = 0; i < _traders.length; i++) {
             address trader = _traders[i];
-            tradeAllowList[trader] = !tradeAllowList[trader];
-            emit TraderStatusUpdated(trader, tradeAllowList[trader]);
+            bool status = _statuses[i];
+            tradeAllowList[trader] = status;
+            emit TraderStatusUpdated(trader, status);
         }
     }
 
     /**
-     * MANAGER ONLY: Toggle whether anyone can trade, bypassing the traderAllowList 
+     * MANAGER ONLY: Toggle whether anyone can trade, bypassing the traderAllowList
+     *
+     * @param _status           Boolean indicating if anyone can trade
      */
-    function updateAnyoneTrade() external onlyManagerAndValidSet(index) {
-        anyoneTrade = !anyoneTrade;
-        emit AnyoneTradeUpdated(anyoneTrade);
+    function updateAnyoneTrade(bool _status) external onlyManagerAndValidSet(index) {
+        anyoneTrade = _status;
+        emit AnyoneTradeUpdated(_status);
     }
 
     /**
-     * MANAGER ONLY: Set target units to current units and last trade to current timestamp. Initialize module.
+     * MANAGER ONLY: Set target units to current units and last trade to zero. Initialize module.
      *
      * @param _index            Address of index being used for this Set
      */
@@ -348,17 +372,16 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
         ISetToken.Position[] memory positions = _index.getPositions();
 
         for (uint256 i = 0; i < positions.length; i++) {
-            assetInfo[IERC20(positions[i].component)].targetUnit = positions[i].unit.toUint256();
-            assetInfo[IERC20(positions[i].component)].lastTradeTimestamp = block.timestamp;
+            ISetToken.Position memory position = positions[i];
+            assetInfo[position.component].targetUnit = position.unit.toUint256();
+            assetInfo[position.component].lastTradeTimestamp = 0;
         }
 
-        _index.initializeModule();
         index = _index;
+        _index.initializeModule();
     }
 
-    function removeModule() external override {
-        require(msg.sender == address(index), "Caller must be index");
-    }
+    function removeModule() external override {}
 
     /* ============ Getter Functions ============ */
 
@@ -368,7 +391,7 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
      * @param _components           Array of components to get target units for
      * @return                      Array of targetUnits mapping to passed components
      */
-    function getTargetUnits(IERC20[] calldata _components) external view returns(uint256[] memory) {
+    function getTargetUnits(address[] calldata _components) external view returns(uint256[] memory) {
         uint256 currentPositionMultiplier = index.positionMultiplier().toUint256();
         
         uint256[] memory targetUnits = new uint256[](_components.length);
@@ -379,37 +402,44 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
         return targetUnits;
     }
 
+    function getRebalanceComponents() external view returns(address[] memory) {
+        return rebalanceComponents;
+    }
+
     /* ============ Internal Functions ============ */
 
     /**
      * Validate that enough time has elapsed since component's last trade and component isn't WETH.
      */
-    function _validateTradeParameters(IERC20 _component) internal view virtual {
-        AssetTrade memory componentInfo = assetInfo[_component];
+    function _validateTradeParameters(address _component) internal view virtual {
+        require(rebalanceComponents.contains(_component), "Passed component not included in rebalance");
+
+        AssetTradeInfo memory componentInfo = assetInfo[_component];
+        require(componentInfo.exchange != uint256(ExchangeId.None), "Exchange must be specified");
         require(
             componentInfo.lastTradeTimestamp.add(componentInfo.coolOffPeriod) <= block.timestamp,
             "Cool off period has not elapsed."
         );
-        require(address(_component) != address(weth), "Component cannot be WETH");
     }
 
     /**
-     * Calculate trade size and whether trade is buy or sell. Trade size is the minimum of the max size and components left to trade.
+     * Calculate trade size and whether trade is buy. Trade size is the minimum of the max size and components left to trade.
      * Reverts if target quantity is already met. Target unit is adjusted based on ratio of position multiplier when target was defined
      * and the current positionMultiplier.
      */
-    function _calculateTradeSizeAndDirection(IERC20 _component) internal view returns (bool, uint256) {
+    function _calculateTradeSizeAndDirection(address _component) internal view returns (bool isBuy, uint256) {
         uint256 totalSupply = index.totalSupply();
 
         uint256 componentMaxSize = assetInfo[_component].maxSize;
         uint256 currentPositionMultiplier = index.positionMultiplier().toUint256();
 
-        uint256 currentNotional = totalSupply.getDefaultTotalNotional(
-            index.getDefaultPositionRealUnit(address(_component)).toUint256()
-        );
-        uint256 targetNotional = totalSupply.getDefaultTotalNotional(_normalizeTargetUnit(_component, currentPositionMultiplier));
+        uint256 currentUnit = index.getDefaultPositionRealUnit(_component).toUint256();
+        uint256 targetUnit = _normalizeTargetUnit(_component, currentPositionMultiplier);
 
-        require(targetNotional != currentNotional, "Target already met");
+        require(currentUnit != targetUnit, "Target already met");
+
+        uint256 currentNotional = totalSupply.getDefaultTotalNotional(currentUnit);
+        uint256 targetNotional = totalSupply.preciseMulCeil(targetUnit);
 
         return targetNotional > currentNotional ? (true, componentMaxSize.min(targetNotional.sub(currentNotional))) :
             (false, componentMaxSize.min(currentNotional.sub(targetNotional)));
@@ -418,29 +448,25 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
     /**
      * Buy an underweight asset by selling an unfixed amount of WETH for a fixed amount of the component.
      */
-    function _buyUnderweight(IERC20 _component, uint256 _amount) internal {
-        uint256 preTradeBuyComponentAmount = _component.balanceOf(address(index));
+    function _buyUnderweight(address _component, uint256 _amount) internal {
+        uint256 preTradeBuyComponentAmount = IERC20(_component).balanceOf(address(index));
         uint256 preTradeSellComponentAmount = weth.balanceOf(address(index));
 
-        _executeTrade(address(weth), address(_component), false, _amount, assetInfo[_component].exchange);
+        _executeTrade(address(weth), _component, false, _amount, assetInfo[_component].exchange);
 
-        _updatePositionState(address(weth), address(_component), preTradeSellComponentAmount, preTradeBuyComponentAmount);
-
-        assetInfo[_component].lastTradeTimestamp = block.timestamp;
+        _updatePositionState(address(weth), _component, preTradeSellComponentAmount, preTradeBuyComponentAmount);
     }
 
     /**
      * Sell an overweight asset by selling a fixed amount of component for an unfixed amount of WETH.
      */
-    function _sellOverweight(IERC20 _component, uint256 _amount) internal {
+    function _sellOverweight(address _component, uint256 _amount) internal {
         uint256 preTradeBuyComponentAmount = weth.balanceOf(address(index));
-        uint256 preTradeSellComponentAmount = _component.balanceOf(address(index));
+        uint256 preTradeSellComponentAmount = IERC20(_component).balanceOf(address(index));
 
-        _executeTrade(address(_component), address(weth), true, _amount, assetInfo[_component].exchange);
+        _executeTrade(_component, address(weth), true, _amount, assetInfo[_component].exchange);
 
-        _updatePositionState(address(_component), address(weth), preTradeSellComponentAmount, preTradeBuyComponentAmount);
-
-        assetInfo[_component].lastTradeTimestamp = block.timestamp;
+        _updatePositionState(_component, address(weth), preTradeSellComponentAmount, preTradeBuyComponentAmount);
     }
 
     /**
@@ -461,7 +487,7 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
         (
             address exchangeAddress,
             bytes memory tradeCallData
-        ) = _exchange == BALANCER_ID ? _getBalancerTradeData(_sellComponent, _buyComponent, _fixIn, _amount, wethBalance) :
+        ) = _exchange == uint256(ExchangeId.Balancer) ? _getBalancerTradeData(_sellComponent, _buyComponent, _fixIn, _amount, wethBalance) :
             _getUniswapLikeTradeData(_sellComponent, _buyComponent, _fixIn, _amount, _exchange);
 
         uint256 approveAmount = _sellComponent == address(weth) ? wethBalance : _amount;
@@ -552,7 +578,7 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
         view
         returns(address, bytes memory)
     {
-        address exchangeAddress = _exchange == UNISWAP_ID ? uniswapRouter : sushiswapRouter;
+        address exchangeAddress = _exchange == uint256(ExchangeId.Uniswap) ? uniswapRouter : sushiswapRouter;
         
         string memory functionSignature;
         address[] memory path = new address[](2);
@@ -585,9 +611,9 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
     function _noTokensToSell() internal view returns (bool) {
         uint256 currentPositionMultiplier = index.positionMultiplier().toUint256();
         for (uint256 i = 0; i < rebalanceComponents.length; i++) {
-            IERC20 component = rebalanceComponents[i];
+            address component = rebalanceComponents[i];
             bool canSell = _normalizeTargetUnit(component, currentPositionMultiplier) < index.getDefaultPositionRealUnit(
-                address(component)
+                component
             ).toUint256();
             if (canSell) { return false; }
         }
@@ -600,9 +626,9 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
     function _allTargetsMet() internal view returns (bool) {
         uint256 currentPositionMultiplier = index.positionMultiplier().toUint256();
         for (uint256 i = 0; i < rebalanceComponents.length; i++) {
-            IERC20 component = rebalanceComponents[i];
+            address component = rebalanceComponents[i];
             bool targetUnmet = _normalizeTargetUnit(component, currentPositionMultiplier) != index.getDefaultPositionRealUnit(
-                address(component)
+                component
             ).toUint256();
             if (targetUnmet) { return false; }
         }
@@ -612,7 +638,7 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
     /**
      * Normalize target unit to current position multiplier in case fees have been accrued.
      */
-    function _normalizeTargetUnit(IERC20 _component, uint256 _currentPositionMultiplier) internal view returns(uint256) {
+    function _normalizeTargetUnit(address _component, uint256 _currentPositionMultiplier) internal view returns(uint256) {
         return assetInfo[_component].targetUnit.mul(_currentPositionMultiplier).div(positionMultiplier);
     }
 
@@ -620,14 +646,15 @@ contract SingleIndexModule is ModuleBase, ReentrancyGuard {
      * Determine if passed address is allowed to call trade. If anyoneTrade set to true anyone can call otherwise needs to be approved.
      */
     function _isAllowedTrader(address _caller) internal view virtual returns (bool) {
-        return anyoneTrade ? true : tradeAllowList[_caller];
+        return anyoneTrade || tradeAllowList[_caller];
     }
 
     /**
      * Validate arrays are of equal length and not empty.
      */
-    function _validateArrays(IERC20[] calldata _components, uint256[] calldata _data) internal pure {
+    function _validateArrays(address[] calldata _components, uint256[] calldata _data) internal pure {
         require(_components.length == _data.length, "Array length mismatch");
         require(_components.length > 0, "Array length must be > 0");
+        require(!_components.hasDuplicate(), "Cannot duplicate components");
     }
 }
