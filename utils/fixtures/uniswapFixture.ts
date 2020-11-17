@@ -7,12 +7,15 @@ import { BigNumber } from "ethers/utils";
 import {
   StakingRewards,
   Uni,
+  UniswapTimelock,
+  UniswapGovernorAlpha,
   UniswapV2Factory,
   UniswapV2Pair,
   UniswapV2Router02
 } from "../contracts/uniswap";
 import { UniswapV2PairFactory } from "../../typechain/UniswapV2PairFactory";
 import { ether } from "../index";
+import { ONE_DAY_IN_SECONDS } from "../constants";
 
 export class UniswapFixture {
   private _deployer: DeployHelper;
@@ -21,6 +24,8 @@ export class UniswapFixture {
 
   public owner: Account;
   public uni: Uni;
+  public uniswapGovernorAlpha: UniswapGovernorAlpha;
+  public uniswapTimelock: UniswapTimelock;
   public factory: UniswapV2Factory;
   public pair: UniswapV2Pair;
   public router: UniswapV2Router02;
@@ -47,6 +52,14 @@ export class UniswapFixture {
       this.owner.address,
       this.owner.address,
       new BigNumber(lastBlock.timestamp).add(2)
+    );
+    this.uniswapTimelock = await this._deployer.external.deployUniswapTimelock(
+      this.owner.address,
+      ONE_DAY_IN_SECONDS.mul(2),
+    );
+    this.uniswapGovernorAlpha = await this._deployer.external.deployUniswapGovernorAlpha(
+      this.uniswapTimelock.address,
+      this.uni.address,
     );
 
     [
@@ -80,6 +93,6 @@ export class UniswapFixture {
   }
 
   public getTokenOrder(_tokenOne: Address, _tokenTwo: Address): [Address, Address] {
-    return _tokenOne < _tokenTwo ? [_tokenOne, _tokenTwo] : [_tokenTwo, _tokenOne];
+    return _tokenOne.toLowerCase() < _tokenTwo.toLowerCase() ? [_tokenOne, _tokenTwo] : [_tokenTwo, _tokenOne];
   }
 }

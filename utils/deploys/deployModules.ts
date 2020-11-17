@@ -2,7 +2,9 @@ import { Signer } from "ethers";
 
 import {
   BasicIssuanceModule,
+  GovernanceModule,
   NavIssuanceModule,
+  SingleIndexModule,
   StreamingFeeModule,
   TradeModule,
   UniswapYieldStrategy,
@@ -11,7 +13,9 @@ import {
 import { Address } from "../types";
 
 import { BasicIssuanceModuleFactory } from "../../typechain/BasicIssuanceModuleFactory";
+import { GovernanceModuleFactory } from "../../typechain/GovernanceModuleFactory";
 import { NavIssuanceModuleFactory } from "../../typechain/NavIssuanceModuleFactory";
+import { SingleIndexModuleFactory } from "../../typechain/SingleIndexModuleFactory";
 import { StreamingFeeModuleFactory } from "../../typechain/StreamingFeeModuleFactory";
 import { TradeModuleFactory } from "../../typechain/TradeModuleFactory";
 import { UniswapYieldStrategyFactory } from "../../typechain/UniswapYieldStrategyFactory";
@@ -64,5 +68,25 @@ export default class DeployModules {
       _rewarder,
       _feeRecipient
     );
+  }
+
+  public async deploySingleIndexModule(
+    controller: Address,
+    weth: Address,
+    uniswapRouter: Address,
+    sushiswapRouter: Address,
+    balancerProxy: Address
+  ): Promise<SingleIndexModule> {
+    return await new SingleIndexModuleFactory(this._deployerSigner).deploy(
+      controller,
+      weth,
+      uniswapRouter,
+      sushiswapRouter,
+      balancerProxy,
+    );
+  }
+
+  public async deployGovernanceModule(controller: Address): Promise<GovernanceModule> {
+    return await new GovernanceModuleFactory(this._deployerSigner).deploy(controller);
   }
 }

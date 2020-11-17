@@ -3,9 +3,16 @@ import { Signer } from "ethers";
 import { BigNumberish, BigNumber } from "ethers/utils";
 
 import {
+  AaveLendingPoolCoreMock,
+  AaveLendingPoolMock,
   AddressArrayUtilsMock,
+  AmmAdapterMock,
+  ClaimAdapterMock,
+  ContractCallerMock,
   ExplicitErc20Mock,
+  GaugeControllerMock,
   GodModeMock,
+  GovernanceAdapterMock,
   InvokeMock,
   KyberNetworkProxyMock,
   ManagerIssuanceHookMock,
@@ -19,16 +26,25 @@ import {
   PositionMock,
   PreciseUnitMathMock,
   ResourceIdentifierMock,
+  StakingAdapterMock,
   StandardTokenMock,
   StandardTokenWithFeeMock,
+  Uint256ArrayUtilsMock,
   WrapAdapterMock,
 } from "../contracts";
 
 import { ether } from "../common";
 
+import { AaveLendingPoolCoreMockFactory } from "../../typechain/AaveLendingPoolCoreMockFactory";
+import { AaveLendingPoolMockFactory } from "../../typechain/AaveLendingPoolMockFactory";
 import { AddressArrayUtilsMockFactory } from "../../typechain/AddressArrayUtilsMockFactory";
+import { AmmAdapterMockFactory } from "../../typechain/AmmAdapterMockFactory";
+import { ClaimAdapterMockFactory } from "../../typechain/ClaimAdapterMockFactory";
+import { ContractCallerMockFactory } from "../../typechain/ContractCallerMockFactory";
 import { ExplicitErc20MockFactory } from "../../typechain/ExplicitErc20MockFactory";
+import { GaugeControllerMockFactory } from "../../typechain/GaugeControllerMockFactory";
 import { GodModeMockFactory } from "../../typechain/GodModeMockFactory";
+import { GovernanceAdapterMockFactory } from "../../typechain/GovernanceAdapterMockFactory";
 import { InvokeMockFactory } from "../../typechain/InvokeMockFactory";
 import { KyberNetworkProxyMockFactory } from "../../typechain/KyberNetworkProxyMockFactory";
 import { ManagerIssuanceHookMockFactory } from "../../typechain/ManagerIssuanceHookMockFactory";
@@ -42,8 +58,10 @@ import { OracleMockFactory } from "../../typechain/OracleMockFactory";
 import { PositionMockFactory } from "../../typechain/PositionMockFactory";
 import { PreciseUnitMathMockFactory } from "../../typechain/PreciseUnitMathMockFactory";
 import { ResourceIdentifierMockFactory } from "../../typechain/ResourceIdentifierMockFactory";
+import { StakingAdapterMockFactory } from "../../typechain/StakingAdapterMockFactory";
 import { StandardTokenMockFactory } from "../../typechain/StandardTokenMockFactory";
 import { StandardTokenWithFeeMockFactory } from "../../typechain/StandardTokenWithFeeMockFactory";
+import { Uint256ArrayUtilsMockFactory } from "../../typechain/Uint256ArrayUtilsMockFactory";
 import { WrapAdapterMockFactory } from "../../typechain/WrapAdapterMockFactory";
 
 export default class DeployMocks {
@@ -81,6 +99,10 @@ export default class DeployMocks {
     return await new AddressArrayUtilsMockFactory(this._deployerSigner).deploy();
   }
 
+  public async deployUint256ArrayUtilsMock(): Promise<Uint256ArrayUtilsMock> {
+    return await new Uint256ArrayUtilsMockFactory(this._deployerSigner).deploy();
+  }
+
   public async deployKyberNetworkProxyMock(mockWethAddress: Address): Promise<KyberNetworkProxyMock> {
     return await new KyberNetworkProxyMockFactory(this._deployerSigner).deploy(mockWethAddress);
   }
@@ -91,6 +113,10 @@ export default class DeployMocks {
 
   public async deployGodModeMock(controllerAddress: Address): Promise<GodModeMock> {
     return await new GodModeMockFactory(this._deployerSigner).deploy(controllerAddress);
+  }
+
+  public async deployGovernanceAdapterMock(initialProposalId: BigNumberish): Promise<GovernanceAdapterMock> {
+    return await new GovernanceAdapterMockFactory(this._deployerSigner).deploy(initialProposalId);
   }
 
   public async deployOneInchExchangeMock(
@@ -130,6 +156,11 @@ export default class DeployMocks {
     return await new ResourceIdentifierMockFactory(this._deployerSigner).deploy();
   }
 
+  public async deployStakingAdapterMock(stakingAsset: Address): Promise<StakingAdapterMock> {
+    return await new StakingAdapterMockFactory(this._deployerSigner)
+      .deploy(stakingAsset);
+  }
+
   public async deployTokenMock(
     initialAccount: Address,
     initialBalance: BigNumberish = ether(1000000000),
@@ -152,8 +183,32 @@ export default class DeployMocks {
       .deploy(initialAccount, initialBalance, name, symbol, fee);
   }
 
+  public async deployAmmAdapterMock(_underlyingTokens: Address[]): Promise<AmmAdapterMock> {
+    return await new AmmAdapterMockFactory(this._deployerSigner).deploy(_underlyingTokens);
+  }
+
   public async deployWrapAdapterMock(): Promise<WrapAdapterMock> {
     return await new WrapAdapterMockFactory(this._deployerSigner).deploy();
+  }
+
+  public async deployAaveLendingPoolCoreMock(): Promise<AaveLendingPoolCoreMock> {
+    return await new AaveLendingPoolCoreMockFactory(this._deployerSigner).deploy();
+  }
+
+  public async deployAaveLendingPoolMock(aaveLendingPoolCore: Address): Promise<AaveLendingPoolMock> {
+    return await new AaveLendingPoolMockFactory(this._deployerSigner).deploy(aaveLendingPoolCore);
+  }
+
+  public async deployClaimAdapterMock(): Promise<ClaimAdapterMock> {
+    return await new ClaimAdapterMockFactory(this._deployerSigner).deploy();
+  }
+
+  public async deployGaugeControllerMock(): Promise<GaugeControllerMock> {
+    return await new GaugeControllerMockFactory(this._deployerSigner).deploy();
+  }
+
+  public async deployContractCallerMock(): Promise<ContractCallerMock> {
+    return await new ContractCallerMockFactory(this._deployerSigner).deploy();
   }
 
   /*************************************

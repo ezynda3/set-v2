@@ -1,6 +1,8 @@
 import { Signer } from "ethers";
 
 import {
+  AaveGovernanceAdapter,
+  CompoundLikeGovernanceAdapter,
   KyberExchangeAdapter,
   OneInchExchangeAdapter,
   AaveMigrationWrapAdapter,
@@ -9,6 +11,8 @@ import {
 
 import { Address, Bytes } from "./../types";
 
+import { AaveGovernanceAdapterFactory } from "../../typechain/AaveGovernanceAdapterFactory";
+import { CompoundLikeGovernanceAdapterFactory } from "../../typechain/CompoundLikeGovernanceAdapterFactory";
 import { KyberExchangeAdapterFactory } from "../../typechain/KyberExchangeAdapterFactory";
 import { OneInchExchangeAdapterFactory } from "../../typechain/OneInchExchangeAdapterFactory";
 import { AaveMigrationWrapAdapterFactory } from "../../typechain/AaveMigrationWrapAdapterFactory";
@@ -37,12 +41,20 @@ export default class DeployAdapters {
     );
   }
 
+  public async deployAaveGovernanceAdapter(aaveProtoGovernance: Address, aaveToken: Address): Promise<AaveGovernanceAdapter> {
+    return await new AaveGovernanceAdapterFactory(this._deployerSigner).deploy(aaveProtoGovernance, aaveToken);
+  }
+
   public async deployAaveMigrationWrapAdapter(
     aaveMigrationProxy: Address,
     lendToken: Address,
     aaveToken: Address
   ): Promise<AaveMigrationWrapAdapter> {
     return await new AaveMigrationWrapAdapterFactory(this._deployerSigner).deploy(aaveMigrationProxy, lendToken, aaveToken);
+  }
+
+  public async deployCompoundLikeGovernanceAdapter(governanceAlpha: Address, governanceToken: Address): Promise<CompoundLikeGovernanceAdapter> {
+    return await new CompoundLikeGovernanceAdapterFactory(this._deployerSigner).deploy(governanceAlpha, governanceToken);
   }
 
   public async deployUniswapPairPriceAdapter(

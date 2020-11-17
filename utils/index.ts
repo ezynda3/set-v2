@@ -2,7 +2,7 @@
 import { ethers } from "@nomiclabs/buidler";
 import { Address } from "./types";
 
-import { AaveFixture, SystemFixture, UniswapFixture } from "./fixtures";
+import { AaveFixture, BalancerFixture, CompoundFixture, SystemFixture, UniswapFixture } from "./fixtures";
 import { Blockchain, ProtocolUtils } from "./common";
 
 // Buidler-Provider Aware Exports
@@ -11,6 +11,8 @@ export const getSystemFixture = (ownerAddress: Address) => new SystemFixture(pro
 export const getProtocolUtils = () => new ProtocolUtils(provider);
 export const getBlockchainUtils = () => new Blockchain(provider);
 export const getAaveFixture = (ownerAddress: Address) => new AaveFixture(provider, ownerAddress);
+export const getBalancerFixture = (ownerAddress: Address) => new BalancerFixture(provider, ownerAddress);
+export const getCompoundFixture = (ownerAddress: Address) => new CompoundFixture(provider, ownerAddress);
 export const getUniswapFixture = (ownerAddress: Address) => new UniswapFixture(provider, ownerAddress);
 
 export {
