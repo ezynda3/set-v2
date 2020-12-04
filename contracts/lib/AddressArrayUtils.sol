@@ -113,4 +113,23 @@ library AddressArrayUtils {
         }
         return (newAddresses, A[index]);
     }
+
+    /**
+     * Returns the combination of the two arrays
+     * @param A The first array
+     * @param B The second array
+     * @return Returns A extended by B
+     */
+    function extend(address[] memory A, address[] memory B) internal pure returns (address[] memory) {
+        uint256 aLength = A.length;
+        uint256 bLength = B.length;
+        address[] memory newAddresses = new address[](aLength + bLength);
+        for (uint256 i = 0; i < aLength; i++) {
+            newAddresses[i] = A[i];
+        }
+        for (uint256 j = 0; j < bLength; j++) {
+            newAddresses[aLength + j] = B[j];
+        }
+        return newAddresses;
+    }
 }
